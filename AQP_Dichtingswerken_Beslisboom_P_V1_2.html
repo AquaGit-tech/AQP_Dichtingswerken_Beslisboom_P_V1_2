@@ -1,0 +1,2875 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQP Beslisboom - Configuratiekeuze V1.2</title>
+<!--
+  CHANGELOG V1.2:
+  ----------------
+  [FEATURES]
+  - Liftputkeuze uitgebreid: praktische indicatoren
+    E08 (vibraties) vs E09 (standaard) in Stap 2
+  - Belangrijk sectie: verdiepte E08/E09 toelichting
+    met technisch mechanisme uitleg
+  - Onderbouwing sectie: liftput vergelijkingstabel
+    E08 vs E09 met alle relevante criteria
+  - Config notes E08/E09 verrijkt met praktische
+    voorbeelden en indicatoren
+
+  CHANGELOG V1.1:
+  ----------------
+  [FEATURES]
+  - 2K status badge per configuratie
+    (optioneel/aanbevolen/verplicht/n.v.t.)
+  - 4 collapsible secties op resultatenpagina:
+    Checklist, Opmerkingen, Belangrijk, Onderbouwing
+  - Belangrijk sectie: kritische aandachtspunten
+  - Onderbouwing sectie: technische specs,
+    systeemvergelijking, droogtijden, planning
+  [STYLING]
+  - UI/UX aligned met Sales Calculator V37.7
+  - Calculator-style section headers (+/- toggle)
+  - Iconen verwijderd uit checklist items
+  - Verbeterde card styling, transitions
+  [REFACTOR]
+  - Data-structuur uitgebreid: 2K status,
+    belangrijk arrays, onderbouwing data
+  - Aparte render functies per sectie
+  - Print CSS voor alle 4 secties
+
+  CHANGELOG V1.0:
+  ----------------
+  [FEATURES]
+  - Beslisboom met 4 stappen (ruimte, water,
+    ondergrond, systeem)
+  - 12 configuraties (E01-E12)
+  - Interactieve checklist met progress tracking
+  - PDF export via print dialog
+  - Dark/light mode toggle
+  - Breadcrumb navigatie
+-->
+<style>
+/* ===== AQP DESIGN TOKENS ===== */
+:root {
+  --primary: #33b2d2;
+  --primary-dark: #2a9bbf;
+  --primary-hover: #2a9bbf;
+  --primary-10: rgba(51,178,210,0.10);
+  --primary-20: rgba(51,178,210,0.20);
+  --success: #22c55e;
+  --success-bg: rgba(34,197,94,0.12);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245,158,11,0.12);
+  --danger: #ef4444;
+  --danger-bg: rgba(239,68,68,0.12);
+  --bg: #1a1b1e;
+  --card-bg: #25272b;
+  --card-border: #2f3136;
+  --text: #e5e5e5;
+  --text-muted: #9ca3af;
+  --input-bg: #2f3136;
+  --dormant-bg: #1e2022;
+  --dormant-border: #3c4043;
+  --radius: clamp(10px,1.2vw,14px);
+  --radius-sm: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --font: -apple-system, BlinkMacSystemFont,
+          'Segoe UI', Roboto, sans-serif;
+}
+
+.light-mode {
+  --bg: #f5f7fa;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --text: #2d3748;
+  --text-muted: #718096;
+  --input-bg: #edf2f7;
+  --dormant-bg: #f8fafc;
+  --dormant-border: #cbd5e0;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* ===== RESET & BASE ===== */
+*, *::before, *::after {
+  box-sizing: border-box; margin: 0; padding: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* ===== HEADER ===== */
+.app-header {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 56px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 100;
+  gap: 16px;
+  transition: background 0.3s ease;
+}
+
+.header-logo {
+  height: 36px;
+  width: auto;
+  flex-shrink: 0;
+}
+
+.dark-mode .logo-light { display: none; }
+.dark-mode .logo-dark { display: block; }
+.logo-light { display: block; }
+.logo-dark { display: none; }
+.light-mode .logo-light { display: block; }
+.light-mode .logo-dark { display: none; }
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+}
+.header-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.header-spacer { flex: 1; }
+
+.btn-theme {
+  width: 36px; height: 36px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+}
+.btn-theme:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ===== MAIN CONTAINER ===== */
+.main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 76px 20px 40px;
+}
+
+/* ===== PROGRESS BAR ===== */
+.progress-wrap {
+  margin-bottom: 28px;
+}
+.progress-steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.progress-step {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--input-bg);
+  transition: background 0.4s ease;
+}
+.progress-step.done {
+  background: var(--primary);
+}
+.progress-step.active {
+  background: var(--primary-20);
+}
+.progress-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===== STEP CARD ===== */
+.step-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  box-shadow: var(--shadow);
+  animation: fadeSlideIn 0.35s ease;
+  transition: background 0.3s ease;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-number {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.step-question {
+  font-size: clamp(18px, 3vw, 22px);
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.step-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* ===== OPTION BUTTONS ===== */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.opt-btn {
+  display: flex;
+  padding: 14px 16px;
+  background: var(--input-bg);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.opt-btn:hover {
+  border-color: var(--primary);
+  background: var(--primary-10);
+}
+
+.opt-btn:active {
+  transform: scale(0.98);
+}
+
+.opt-content { flex: 1; }
+
+.opt-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
+.opt-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ===== RESULT CARD ===== */
+.result-card {
+  background: var(--card-bg);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 0;
+  box-shadow: var(--shadow),
+    0 0 20px rgba(51,178,210,0.1);
+  animation: fadeSlideIn 0.4s ease;
+  overflow: hidden;
+  transition: background 0.3s ease;
+}
+
+.result-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 20px 24px;
+  text-align: center;
+}
+.result-code {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.result-name {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+.result-body {
+  padding: 24px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.result-item {
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border-radius: var(--radius-sm);
+}
+.result-item-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.result-item-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.result-full {
+  grid-column: 1 / -1;
+}
+
+.result-system {
+  padding: 14px 16px;
+  background: var(--primary-10);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 var(--radius-sm)
+    var(--radius-sm) 0;
+  margin-bottom: 20px;
+}
+.result-system-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.result-system-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ===== 2K STATUS BADGE ===== */
+.status-2k {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-2k-optioneel {
+  background: var(--input-bg);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+}
+.status-2k-aanbevolen {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid rgba(245,158,11,0.3);
+}
+.status-2k-verplicht {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid rgba(239,68,68,0.3);
+}
+.status-2k-nvt {
+  background: var(--success-bg);
+  color: var(--success);
+  border: 1px solid rgba(34,197,94,0.3);
+}
+.status-2k-maatwerk {
+  background: var(--primary-10);
+  color: var(--primary);
+  border: 1px solid rgba(51,178,210,0.3);
+}
+
+.result-2k-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.result-2k-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.risk-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.risk-low {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.risk-high {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.risk-extreme {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+/* ===== BREADCRUMB / PATH ===== */
+.path-wrap {
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.path-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--primary-10);
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.path-chip:hover {
+  background: var(--primary-20);
+}
+.path-sep {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+}
+.btn-outline:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ===== TEAMLEADER BADGE ===== */
+.tl-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  margin-top: 16px;
+}
+.tl-badge-icon {
+  font-size: 24px;
+}
+.tl-badge-text {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.tl-badge-name {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* ===== WARNING BOX ===== */
+.warn-box {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.warn-box-caution {
+  background: var(--warning-bg);
+  border: 1px solid rgba(245,158,11,0.3);
+  color: var(--warning);
+}
+.warn-box-info {
+  background: var(--primary-10);
+  border: 1px solid rgba(51,178,210,0.3);
+  color: var(--primary);
+}
+.warn-icon {
+  font-size: 18px; flex-shrink: 0;
+}
+
+/* ===== CALCULATOR-STYLE SECTIONS ===== */
+.aqp-section {
+  margin-top: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: background 0.3s ease;
+}
+
+.section-header {
+  background: transparent;
+  color: var(--text);
+  padding: clamp(12px, 1.5vw, 16px) 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(15px, 2.5vw, 18px);
+  font-weight: 600;
+  transition: color 0.2s, background 0.2s;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+  user-select: none;
+}
+.section-header:hover {
+  background: var(--primary-10);
+}
+
+.section-toggle::after {
+  content: '+';
+  font-size: clamp(16px, 2.5vw, 20px);
+  font-weight: 600;
+  color: var(--primary);
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+}
+.section-header.expanded .section-toggle::after {
+  content: '-';
+}
+
+.section-header:hover .section-toggle::after {
+  color: var(--primary-dark);
+}
+
+.section-label {
+  flex: 1;
+  color: var(--primary);
+}
+.section-meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.section-content {
+  display: none;
+  padding: 0 20px 20px;
+}
+.section-content.show {
+  display: block;
+}
+
+/* ===== CHECKLIST (inside section) ===== */
+.cl-group {
+  margin-top: 16px;
+}
+.cl-group:first-child {
+  margin-top: 4px;
+}
+.cl-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--primary);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--card-border);
+}
+.cl-group-progress {
+  float: right;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cl-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  transition: opacity 0.2s ease;
+}
+.cl-item + .cl-item {
+  border-top: 1px solid rgba(127,127,127,0.08);
+}
+.cl-item.cl-done {
+  opacity: 0.55;
+}
+.cl-item.cl-done .cl-label {
+  text-decoration: line-through;
+  text-decoration-color: var(--primary);
+}
+
+.cl-check {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.cl-label {
+  font-size: 13px;
+  line-height: 1.4;
+  flex: 1;
+  color: var(--text);
+  transition: opacity 0.2s;
+}
+.cl-label-hint {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.cl-input {
+  width: 80px;
+  padding: 4px 8px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: right;
+}
+.cl-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.cl-input.cl-filled {
+  border-color: var(--primary);
+  background: var(--primary-10);
+}
+
+.cl-unit {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 24px;
+  line-height: 26px;
+}
+
+.cl-notes-wrap {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+.cl-notes-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.cl-notes {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.cl-notes:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Progress bar in section header */
+.cl-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.cl-progress-bar {
+  width: 60px;
+  height: 5px;
+  background: var(--input-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cl-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.cl-progress-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* Completion banner */
+.cl-complete {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  background: rgba(51, 178, 210, 0.1);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ===== OPMERKINGEN/BELANGRIJK/ONDERBOUWING ===== */
+.info-list {
+  list-style: none;
+  padding: 0;
+}
+.info-list li {
+  position: relative;
+  padding: 6px 0 6px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.info-list li + li {
+  border-top: 1px solid rgba(127,127,127,0.08);
+}
+.info-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+/* Belangrijk: danger bullets */
+.belangrijk-list li::before {
+  background: var(--danger);
+}
+.belangrijk-list li {
+  color: var(--text);
+}
+.belangrijk-group {
+  margin-top: 14px;
+}
+.belangrijk-group:first-child {
+  margin-top: 0;
+}
+.belangrijk-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--danger);
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* Onderbouwing tables */
+.spec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 12px;
+}
+.spec-table:first-child {
+  margin-top: 0;
+}
+.spec-table caption {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--primary);
+  padding-bottom: 6px;
+}
+.spec-table th {
+  text-align: left;
+  padding: 6px 8px;
+  background: var(--input-bg);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--card-border);
+}
+.spec-table td {
+  padding: 6px 8px;
+  color: var(--text);
+  border-bottom: 1px solid
+    rgba(127,127,127,0.08);
+}
+.spec-table tr:last-child td {
+  border-bottom: none;
+}
+.spec-table .highlight {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.spec-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--primary);
+  margin-top: 16px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--card-border);
+}
+.spec-subtitle:first-child {
+  margin-top: 4px;
+}
+
+.planning-step {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.planning-step + .planning-step {
+  border-top: 1px solid rgba(127,127,127,0.08);
+}
+.planning-day {
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 48px;
+  flex-shrink: 0;
+}
+.planning-desc {
+  color: var(--text);
+}
+
+/* PDF button */
+.btn-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-pdf:hover { opacity: 0.85; }
+
+/* ===== FOOTER ===== */
+.app-footer {
+  text-align: center;
+  padding: 24px 0 16px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 480px) {
+  .main { padding: 68px 14px 32px; }
+  .step-card, .result-body { padding: 20px 16px; }
+  .result-grid { grid-template-columns: 1fr; }
+  .header-title { font-size: 13px; }
+  .header-sub { display: none; }
+  .section-header { padding: 12px 14px; }
+  .section-content { padding: 0 14px 14px; }
+  .result-2k-wrap { flex-direction: column;
+    align-items: flex-start; }
+}
+
+/* ===== PRINT ===== */
+@media print {
+  * { -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important; }
+  body {
+    background: #fff !important;
+    color: #1a1a2e !important;
+  }
+  .app-header, .btn-theme,
+  .progress-wrap, .path-wrap { display: none; }
+  .actions { display: none; }
+  .btn-pdf { display: none !important; }
+  .main { padding: 0; max-width: 100%; }
+
+  .print-header { display: block !important; }
+
+  .result-card {
+    border: 2px solid #33b2d2;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+  .result-header {
+    background: #33b2d2 !important;
+    color: #fff !important;
+  }
+  .result-body { background: #fff !important; }
+  .result-grid { color: #1a1a2e !important; }
+  .result-item {
+    background: #f5f5f5 !important;
+  }
+  .result-item-label { color: #666 !important; }
+  .result-item-value { color: #1a1a2e !important; }
+  .status-2k {
+    border: 1px solid #999 !important;
+  }
+
+  .aqp-section {
+    border: 1px solid #ccc;
+    box-shadow: none;
+    background: #fff !important;
+    break-inside: auto;
+  }
+  .section-header {
+    background: #f5f5f5 !important;
+    border-bottom: 1px solid #ccc;
+  }
+  .section-label { color: #33b2d2 !important; }
+  .section-toggle { display: none; }
+  .section-meta { display: none; }
+  .cl-progress-wrap { display: none; }
+  .section-content {
+    display: block !important;
+    background: #fff !important;
+  }
+  .cl-group { break-inside: avoid; }
+  .cl-group-title {
+    color: #33b2d2 !important;
+    border-bottom: 1px solid #ccc;
+  }
+  .cl-item {
+    padding: 4px 0;
+    opacity: 1 !important;
+  }
+  .cl-item.cl-done .cl-label {
+    text-decoration: line-through;
+  }
+  .cl-label { color: #1a1a2e !important; }
+  .cl-label-hint { color: #666 !important; }
+  .cl-check { width: 14px; height: 14px; }
+  .cl-input {
+    border: 1px solid #999 !important;
+    background: #fff !important;
+    color: #1a1a2e !important;
+    padding: 2px 6px;
+    font-size: 12px;
+  }
+  .cl-unit { color: #666 !important; }
+  .cl-notes {
+    border: 1px solid #999 !important;
+    background: #fff !important;
+    color: #1a1a2e !important;
+    min-height: 40px;
+    font-size: 12px;
+  }
+  .cl-notes-label { color: #33b2d2 !important; }
+  .cl-complete {
+    background: #e8f8fc !important;
+    border: 1px solid #33b2d2;
+    color: #33b2d2 !important;
+  }
+  .tl-badge {
+    border: 1px solid #33b2d2;
+    background: #e8f8fc !important;
+  }
+  .tl-badge-icon { color: #33b2d2 !important; }
+  .tl-badge-text { color: #1a1a2e !important; }
+  .tl-badge-name { color: #33b2d2 !important; }
+  .cl-group-progress { color: #666 !important; }
+
+  .info-list li { color: #1a1a2e !important; }
+  .info-list li::before {
+    background: #33b2d2 !important;
+  }
+  .belangrijk-list li::before {
+    background: #ef4444 !important;
+  }
+  .belangrijk-group-title {
+    color: #ef4444 !important;
+  }
+
+  .spec-table th {
+    background: #f5f5f5 !important;
+    color: #666 !important;
+  }
+  .spec-table td { color: #1a1a2e !important; }
+  .spec-table caption { color: #33b2d2 !important; }
+  .spec-table .highlight {
+    color: #33b2d2 !important;
+  }
+  .spec-subtitle { color: #33b2d2 !important; }
+  .planning-day { color: #33b2d2 !important; }
+  .planning-desc { color: #1a1a2e !important; }
+
+  @page { size: A4; margin: 15mm; }
+}
+</style>
+</head>
+<body class="dark-mode">
+
+<!-- PRINT-ONLY HEADER -->
+<div class="print-header" style="display:none;
+  margin-bottom:20px; padding-bottom:12px;
+  border-bottom: 2px solid #33b2d2;">
+  <div style="font-size:20px; font-weight:800;
+    color:#33b2d2; margin-bottom:4px;">AQUAPROVED</div>
+  <div style="font-size:12px; color:#666;"
+    id="printSub">Configuratierapport</div>
+</div>
+
+<!-- HEADER -->
+<header class="app-header">
+  <svg class="header-logo logo-dark" height="36"
+    viewBox="0 0 200 36" fill="none"
+    xmlns="http://www.w3.org/2000/svg">
+    <text x="0" y="26" font-family="Arial,sans-serif"
+      font-weight="800" font-size="22"
+      fill="#33b2d2">AQUAPROVED</text>
+  </svg>
+  <svg class="header-logo logo-light" height="36"
+    viewBox="0 0 200 36" fill="none"
+    xmlns="http://www.w3.org/2000/svg">
+    <text x="0" y="26" font-family="Arial,sans-serif"
+      font-weight="800" font-size="22"
+      fill="#33b2d2">AQUAPROVED</text>
+  </svg>
+  <div>
+    <div class="header-title">
+      Beslisboom Configuratiekeuze</div>
+    <div class="header-sub">
+      Vertegenwoordiger Tool V1.2</div>
+  </div>
+  <div class="header-spacer"></div>
+  <button class="btn-theme" onclick="toggleTheme()"
+    title="Thema wisselen">
+    <span id="themeIcon">&#9788;</span>
+  </button>
+</header>
+
+<!-- MAIN -->
+<div class="main" id="app"></div>
+
+<!-- FOOTER -->
+<div class="app-footer">
+  &copy; 2026 Vecon | i.o.v. Aquaproved BV
+  - All rights reserved
+</div>
+
+<script>
+/* ===== THEME ===== */
+function toggleTheme() {
+  var b = document.body;
+  b.classList.toggle('dark-mode');
+  b.classList.toggle('light-mode');
+  var dark = b.classList.contains('dark-mode');
+  document.getElementById('themeIcon').innerHTML =
+    dark ? '&#9788;' : '&#9790;';
+}
+
+/* ===== CONFIGURATION DATA ===== */
+var CONFIGS = {
+  E01: {
+    code: 'E01', name: 'W1-BET',
+    title: 'Kelder W1 Bodemvocht - 100% Beton',
+    waterklasse: 'W1', ondergrond: '100% Beton',
+    systeem: 'AQUAFIN-1K (2 lagen)',
+    doorlooptijd: '2 dagen', lijnen: 46,
+    risk: 'low', riskLabel: 'Standaard',
+    status2k: 'optioneel',
+    status2kLabel: '2K: OPTIONEEL',
+    status2kReden: 'Extra zekerheid, niet verplicht',
+    notes: 'Eenvoudigste configuratie. ' +
+      'Geen cementering nodig, geen primer op ' +
+      'gefreesd beton. 2K is optioneel ' +
+      '(aanbevolen bij voegen/overgangen).',
+    tlName: 'E01) Kelderdichting, ' +
+      'W1 Bodemvocht - Beton (W1-BET)'
+  },
+  E02: {
+    code: 'E02', name: 'W1-MET',
+    title: 'Kelder W1 Bodemvocht - 100% Metselwerk',
+    waterklasse: 'W1', ondergrond: '100% Metselwerk',
+    systeem: 'AQUAFIN-1K (2 lagen) + 2K',
+    doorlooptijd: '3-4 dagen', lijnen: 58,
+    risk: 'low', riskLabel: 'Standaard',
+    status2k: 'aanbevolen',
+    status2kLabel: '2K: AANBEVOLEN',
+    status2kReden: 'Beweging in metselwerk mogelijk',
+    notes: 'Zoutneutralisatie vaak nodig. ' +
+      'Cementering Asocret M30 verplicht (min. 10mm). ' +
+      'Primer (Aquafin-Primer of Esco-Fluaat) op ' +
+      'metselwerk voor cementering.',
+    tlName: 'E02) Kelderdichting, ' +
+      'W1 Bodemvocht - Metselwerk (W1-MET)'
+  },
+  E03: {
+    code: 'E03', name: 'W1-MIX',
+    title: 'Kelder W1 Bodemvocht - Mix Ondergrond',
+    waterklasse: 'W1',
+    ondergrond: 'Mix (beton + metselwerk)',
+    systeem: 'AQUAFIN-1K (2 lagen) + 2K',
+    doorlooptijd: '3-4 dagen', lijnen: 56,
+    risk: 'low', riskLabel: 'Standaard',
+    status2k: 'aanbevolen',
+    status2kLabel: '2K: AANBEVOLEN',
+    status2kReden: 'Metselwerk wanden = beweging',
+    notes: 'Betonvloer + metselwerk wanden. ' +
+      'Beide ondergrondvoorbereidingen nodig ' +
+      '(S.2 + S.3). Cementering alleen op ' +
+      'metselwerk wanden.',
+    tlName: 'E03) Kelderdichting, ' +
+      'W1 Bodemvocht - Mix (W1-MIX)'
+  },
+  E04: {
+    code: 'E04', name: 'W2-BET-1K',
+    title: 'Kelder W2.1 Drukkend Water - Beton - 1K',
+    waterklasse: 'W2.1', ondergrond: '100% Beton',
+    systeem: 'AQUAFIN-1K (3 lagen) + 2K verplicht',
+    doorlooptijd: '3 dagen', lijnen: 46,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'verplicht',
+    status2kLabel: '2K: VERPLICHT',
+    status2kReden: 'Scheuroverbrugging essentieel ' +
+      'bij drukkend water',
+    notes: 'Dag 1: afbraak + ondergrond + kim. ' +
+      'Dag 2: 1K laag 1 (08:00) + laag 2 (12:00) + ' +
+      'laag 3 (16:00). Dag 3: curing + 2K (2 lagen). ' +
+      'Sneller dan IC (3 vs 4-5 dagen).',
+    tlName: 'E04) Kelderdichting, W2.1 Drukkend ' +
+      'water - Beton - 1K systeem'
+  },
+  E05: {
+    code: 'E05', name: 'W2-BET-IC',
+    title: 'Kelder W2.1 Drukkend Water - Beton - IC',
+    waterklasse: 'W2.1', ondergrond: '100% Beton',
+    systeem: 'AQUAFIN-IC (2 lagen) - kristallijn',
+    doorlooptijd: '4-5 dagen', lijnen: 44,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'nvt',
+    status2kLabel: 'IC: GEEN 2K NODIG',
+    status2kReden: 'IC is zelfherstellend tot 0,4mm',
+    notes: 'IC ALLEEN op beton! ' +
+      'Zelfherstellend tot 0,4mm. ' +
+      'Drukweerstand tot 140m waterkolom. ' +
+      'Curing: 3 dagen vochtig houden. ' +
+      '24-48u droogtijd tussen lagen.',
+    tlName: 'E05) Kelderdichting, W2.1 Drukkend ' +
+      'water - Beton - IC kristallijn'
+  },
+  E06: {
+    code: 'E06', name: 'W2-MET',
+    title: 'Kelder W2.1 Drukkend Water - Metselwerk',
+    waterklasse: 'W2.1', ondergrond: '100% Metselwerk',
+    systeem: 'AQUAFIN-1K (3 lagen) + 2K verplicht',
+    doorlooptijd: '4-5 dagen', lijnen: 58,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'verplicht',
+    status2kLabel: '2K: VERPLICHT',
+    status2kReden: 'Scheuroverbrugging essentieel ' +
+      'bij drukkend water',
+    notes: 'IC NIET mogelijk op metselwerk. ' +
+      'Cementering + primer verplicht. ' +
+      'Zoutneutralisatie controleren. ' +
+      '2K verplicht bij W2.1.',
+    tlName: 'E06) Kelderdichting, W2.1 Drukkend ' +
+      'water - Metselwerk'
+  },
+  E07: {
+    code: 'E07', name: 'W2-MIX',
+    title: 'Kelder W2.1 Drukkend Water - Mix',
+    waterklasse: 'W2.1',
+    ondergrond: 'Mix (beton + metselwerk)',
+    systeem: 'AQUAFIN-1K (3 lagen) + 2K verplicht',
+    doorlooptijd: '4-5 dagen', lijnen: 56,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'verplicht',
+    status2kLabel: '2K: VERPLICHT',
+    status2kReden: 'Scheuroverbrugging essentieel ' +
+      'bij drukkend water',
+    notes: 'Betonvloer + metselwerk wanden. ' +
+      'IC NIET mogelijk (metselwerk aanwezig). ' +
+      'Beide ondergrondvoorbereidingen nodig. ' +
+      '2K verplicht bij W2.1.',
+    tlName: 'E07) Kelderdichting, W2.1 Drukkend ' +
+      'water - Mix (W2-MIX)'
+  },
+  E08: {
+    code: 'E08', name: 'LIFT-1K',
+    title: 'Liftput W2.1 - 1K Systeem (vibraties)',
+    waterklasse: 'W2.1', ondergrond: '100% Beton',
+    systeem: 'AQUAFIN-1K (3 lagen) + RB400 (2 lagen)',
+    doorlooptijd: '3 dagen', lijnen: 34,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'nvt',
+    status2kLabel: 'RB400 (DYNAMISCH)',
+    status2kReden: 'RB400 vervangt 2K: dynamische ' +
+      'scheuroverbrugging bij liftvibraties',
+    notes: 'RB400 voor dynamische scheuroverbrugging ' +
+      'bij liftvibraties. Flexibele membraan buigt ' +
+      'mee met herhaalde scheurbewegingen (tractie-' +
+      'liften, goederenliften, hoge frequentie). ' +
+      'Pompput BEHOUDEN (verplicht). ' +
+      'Technische ruimte: geen afwerking wanden/vloer. ' +
+      'Doorlooptijd: 3 dagen (sneller dan IC).',
+    tlName: 'E08) Liftputdichting, W2.1 - 1K ' +
+      'systeem (LIFT-1K)'
+  },
+  E09: {
+    code: 'E09', name: 'LIFT-IC',
+    title: 'Liftput W2.1 - IC Kristallijn (standaard)',
+    waterklasse: 'W2.1', ondergrond: '100% Beton',
+    systeem: 'AQUAFIN-IC (2 lagen) - zelfherstellend',
+    doorlooptijd: '4-5 dagen', lijnen: 33,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'nvt',
+    status2kLabel: 'IC: GEEN 2K NODIG',
+    status2kReden: 'IC is zelfherstellend tot 0,4mm',
+    notes: 'Schomburg PRIMAIRE aanbeveling voor ' +
+      'liftputten. Ideaal voor hydraulische liften ' +
+      'en residentieel gebruik zonder trillingen. ' +
+      'Zelfherstellend tot 0,4mm: kristallen ' +
+      'groeien scheuren dicht bij vochtcontact. ' +
+      'Pompput BEHOUDEN (verplicht). ' +
+      'Curing: 3 dagen vochtig houden. ' +
+      'Doorlooptijd: 4-5 dagen.',
+    tlName: 'E09) Liftputdichting, W2.1 - IC ' +
+      'kristallijn (LIFT-IC)'
+  },
+  E10: {
+    code: 'E10', name: 'GAR-W1',
+    title: 'Garage W1 Bodemvocht - met Slijtlaag',
+    waterklasse: 'W1', ondergrond: 'Mix',
+    systeem: 'AQUAFIN-1K (2 lagen) + 2K + slijtlaag',
+    doorlooptijd: '3-4 dagen', lijnen: 58,
+    risk: 'low', riskLabel: 'Standaard',
+    status2k: 'aanbevolen',
+    status2kLabel: '2K: AANBEVOLEN + SLIJTLAAG',
+    status2kReden: 'Slijtlaag verplicht ' +
+      'bij mechanische belasting',
+    notes: 'Slijtvaste/antislip coating VERPLICHT ' +
+      '(mechanische belasting voertuigen). ' +
+      'Betonvloer + mogelijke metselwerk wanden.',
+    tlName: 'E10) Garagedichting, W1 Bodemvocht - ' +
+      'met slijtlaag (GAR-W1)'
+  },
+  E11: {
+    code: 'E11', name: 'GAR-W2',
+    title: 'Garage W2.1 Drukkend Water - met Slijtlaag',
+    waterklasse: 'W2.1', ondergrond: 'Mix',
+    systeem: 'AQUAFIN-1K (3 lagen) + 2K + slijtlaag',
+    doorlooptijd: '4 dagen', lijnen: 58,
+    risk: 'high', riskLabel: 'Hoog',
+    status2k: 'verplicht',
+    status2kLabel: '2K: VERPLICHT + SLIJTLAAG',
+    status2kReden: 'Drukkend water + mechanische belasting',
+    notes: 'Slijtvaste/antislip coating VERPLICHT. ' +
+      '2K verplicht bij W2.1. ' +
+      '3 lagen 1K voor drukkend water.',
+    tlName: 'E11) Garagedichting, W2.1 Drukkend ' +
+      'water - met slijtlaag (GAR-W2)'
+  },
+  E12: {
+    code: 'E12', name: 'W2.2-SPEC',
+    title: 'W2.2 Hoge Waterdruk (>3m) - ' +
+      'Speciale Constructie',
+    waterklasse: 'W2.2', ondergrond: 'n.v.t.',
+    systeem: 'MAATWERKOFFERTE VEREIST',
+    doorlooptijd: 'PM', lijnen: 'PM',
+    risk: 'extreme', riskLabel: 'Extreem',
+    status2k: 'maatwerk',
+    status2kLabel: 'MAATWERK VEREIST',
+    status2kReden: 'Buiten standaard scope',
+    notes: 'Buiten standaard scope. Vereist: ' +
+      'constructieve versterkingen, mogelijk externe ' +
+      'drainage/bemaling, structurele berekeningen, ' +
+      'samenwerking ingenieursbureau. ' +
+      'OVERLEG met Wim voor maatwerkofferte.',
+    tlName: 'E12) Kelderdichting, W2.2 Hoge ' +
+      'waterdruk (>3m) - Speciaal'
+  }
+};
+
+/* ===== CONFIG FLAGS ===== */
+var FLAGS = {
+  E01: { beton:true,  metselwerk:false, w21:false,
+         ic:false, liftput:false, garage:false },
+  E02: { beton:false, metselwerk:true,  w21:false,
+         ic:false, liftput:false, garage:false },
+  E03: { beton:true,  metselwerk:true,  w21:false,
+         ic:false, liftput:false, garage:false },
+  E04: { beton:true,  metselwerk:false, w21:true,
+         ic:false, liftput:false, garage:false },
+  E05: { beton:true,  metselwerk:false, w21:true,
+         ic:true,  liftput:false, garage:false },
+  E06: { beton:false, metselwerk:true,  w21:true,
+         ic:false, liftput:false, garage:false },
+  E07: { beton:true,  metselwerk:true,  w21:true,
+         ic:false, liftput:false, garage:false },
+  E08: { beton:true,  metselwerk:false, w21:true,
+         ic:false, liftput:true,  garage:false },
+  E09: { beton:true,  metselwerk:false, w21:true,
+         ic:true,  liftput:true,  garage:false },
+  E10: { beton:true,  metselwerk:true,  w21:false,
+         ic:false, liftput:false, garage:true },
+  E11: { beton:true,  metselwerk:true,  w21:true,
+         ic:false, liftput:false, garage:true },
+  E12: { beton:false, metselwerk:false, w21:false,
+         ic:false, liftput:false, garage:false }
+};
+
+/* ===== BELANGRIJK CONTENT ===== */
+function getBelangrijk(code) {
+  var f = FLAGS[code];
+  if (!f) return [];
+  var groups = [];
+
+  /* ALGEMEEN - alle configuraties */
+  var alg = [];
+  alg.push('Kimvorming VERPLICHT: holle kim min. ' +
+    '50mm straal, 45\u00B0 schuine kant, ' +
+    'alle wand-vloer aansluitingen');
+  alg.push('Doorvoeringen: ALLE leidingen/kabels ' +
+    'waterdicht afwerken met manchetten');
+  if (!f.ic) {
+    alg.push('Curing 1K: minimaal 24u vochtig ' +
+      'houden na laatste laag');
+    alg.push('Droogtijd 1K tussen lagen: ' +
+      '4-6 uur (mat-vochtig, niet uitgedroogd)');
+    alg.push('Max. 2 kg/m\u00B2 per arbeidsgang ' +
+      '(voorkomt scheurvorming)');
+  }
+  groups.push({ title: 'Algemeen', items: alg });
+
+  /* BETON specifiek */
+  if (f.beton && !f.liftput) {
+    var bet = [];
+    bet.push('Gefreesd beton: GEEN primer nodig ' +
+      '(directe hechting 1K/IC op ruw beton)');
+    bet.push('Bestaande coating aanwezig: ' +
+      'VOLLEDIG verwijderen voor hechting');
+    bet.push('Scheuren >0,3mm: eerst injectie ' +
+      'met Aquafin-P4 voor aanbrengen 1K/IC');
+    groups.push({ title: 'Beton', items: bet });
+  }
+
+  /* METSELWERK specifiek */
+  if (f.metselwerk) {
+    var met = [];
+    met.push('Zouttest: bevochtigen en observeren. ' +
+      'Hygroscopische zouten = Esco-Fluaat behandeling');
+    met.push('Esco-Fluaat: op BLOOT metselwerk, ' +
+      '24u droogtijd voor cementering');
+    met.push('Primer VERPLICHT: Aquafin Primer ' +
+      '0,20-0,25 kg/m\u00B2 voor cementering');
+    met.push('Cementering Asocret M30: ' +
+      'min. 10mm dikte voor waterwerende werking');
+    met.push('Bestaande cementering: ' +
+      'VOLLEDIG verwijderen (afbikken tot ruw)');
+    groups.push({
+      title: 'Metselwerk', items: met
+    });
+  }
+
+  /* IC specifiek */
+  if (f.ic) {
+    var ic = [];
+    ic.push('ALLEEN op beton ' +
+      '(NIET op metselwerk of cementering)');
+    ic.push('Wet-on-tacky: laag 1 + laag 2 MOETEN ' +
+      'op dezelfde dag aangebracht worden');
+    ic.push('Curing: minimaal 3 dagen regelmatig ' +
+      'nat sprayen (vochtig houden)');
+    ic.push('Droogtijd tussen lagen: ' +
+      '24-48u (oppervlak niet beschadigen)');
+    ic.push('Geen 2K nodig ' +
+      '(zelfherstellend tot 0,4mm scheuren)');
+    groups.push({
+      title: 'IC Kristallijn', items: ic
+    });
+  }
+
+  /* LIFTPUT specifiek */
+  if (f.liftput) {
+    var lp = [];
+    lp.push('Pompput BEHOUDEN = verplicht ' +
+      '(brandveiligheidseisen)');
+    lp.push('Geen afwerking wanden/vloer ' +
+      '(technische ruimte)');
+    lp.push('Geen tegels, tussenwanden ' +
+      'of inbouwkasten mogelijk');
+    lp.push('Ventilatie: 24 uur luchtcirculatie ' +
+      'na behandeling (slecht geventileerde ruimte)');
+    if (code === 'E08') {
+      lp.push('RB400: flexibele membraan die meebuigt ' +
+        'met dynamische scheurbewegingen');
+      lp.push('Vibraties veroorzaken scheuren die ' +
+        'continu openen en sluiten - IC kan dit ' +
+        'NIET opvangen (kristallen breken)');
+      lp.push('Indicatoren: tractielift, ' +
+        'goederenlift, hoog gebouw, frequent gebruik');
+      lp.push('Scheuroverbrugging RB400: statisch ' +
+        'EN dynamisch conform DIN 18533');
+    }
+    if (code === 'E09') {
+      lp.push('IC = Schomburg primaire aanbeveling ' +
+        'voor liftputten zonder vibraties');
+      lp.push('Zelfherstellend: kristallen groeien ' +
+        'scheuren dicht bij vochtcontact (tot 0,4mm)');
+      lp.push('Indicatoren standaard: hydraulische ' +
+        'lift, residentieel, lage frequentie');
+      lp.push('Wet-on-tacky: laag 1+2 MOETEN op ' +
+        'zelfde dag worden aangebracht');
+      lp.push('Curing: 3 dagen regelmatig nat sprayen');
+    }
+    groups.push({
+      title: 'Liftput', items: lp
+    });
+  }
+
+  /* GARAGE specifiek */
+  if (f.garage) {
+    var ga = [];
+    ga.push('Slijtvaste/antislip coating VERPLICHT ' +
+      '(mechanische belasting voertuigen)');
+    ga.push('Primer voor slijtlaag: Asodur SG3 ' +
+      '(kelder) of GBM (bovengronds)');
+    ga.push('Coating pas aanbrengen na volledige ' +
+      'droging dichtingssysteem');
+    groups.push({
+      title: 'Garage', items: ga
+    });
+  }
+
+  /* POMPPUT beslissing (niet-liftput) */
+  if (!f.liftput) {
+    var pp = [];
+    pp.push('Buitenafdichting aanwezig + test OK: ' +
+      'opvullen mogelijk');
+    pp.push('Alleen binnenafdichting: ' +
+      'BEHOUDEN als vangnet');
+    pp.push('Bij twijfel: ALTIJD behouden');
+    groups.push({
+      title: 'Pompput beslissing', items: pp
+    });
+  }
+
+  return groups;
+}
+
+/* ===== ONDERBOUWING CONTENT ===== */
+function getOnderbouwing(code) {
+  var f = FLAGS[code];
+  var c = CONFIGS[code];
+  if (!f || !c) return '';
+  var html = '';
+
+  /* Systeemvergelijking (bij W2.1 beton) */
+  if (f.w21 && f.beton && !f.liftput && !f.garage) {
+    html += '<div class="spec-subtitle" ' +
+      'style="margin-top:0">' +
+      'Systeemvergelijking 1K+2K vs IC</div>';
+    html += '<table class="spec-table">' +
+      '<tr><th>Criterium</th>' +
+      '<th>AQUAFIN-1K + 2K</th>' +
+      '<th>AQUAFIN-IC</th></tr>' +
+      '<tr><td>Ondergrond</td>' +
+      '<td>Alle (beton, metselwerk, cem.)</td>' +
+      '<td class="highlight">Alleen beton</td></tr>' +
+      '<tr><td>Lagen totaal</td>' +
+      '<td>3 + 2 = 5 lagen</td>' +
+      '<td class="highlight">2 lagen</td></tr>' +
+      '<tr><td>Doorlooptijd</td>' +
+      '<td class="highlight">3 dagen</td>' +
+      '<td>4-5 dagen</td></tr>' +
+      '<tr><td>Droogtijd tussen lagen</td>' +
+      '<td>4-6u (1K) + 3-6u (2K)</td>' +
+      '<td>24-48u (wet-on-tacky)</td></tr>' +
+      '<tr><td>Curing</td>' +
+      '<td>24u vochtig</td>' +
+      '<td>3 dagen vochtig</td></tr>' +
+      '<tr><td>Scheuroverbrugging</td>' +
+      '<td>Via 2K (tot 0,75mm)</td>' +
+      '<td class="highlight">' +
+      'Zelfherstellend (0,4mm)</td></tr>' +
+      '<tr><td>Drukweerstand</td>' +
+      '<td>Tot 10m waterkolom</td>' +
+      '<td class="highlight">' +
+      'Tot 140m waterkolom</td></tr>' +
+      '<tr><td>Ideaal voor</td>' +
+      '<td>Metselwerk, oude kelders</td>' +
+      '<td>Liftputten, betonkelders</td></tr>' +
+      '</table>';
+  }
+
+  /* Droogtijden referentie */
+  html += '<div class="spec-subtitle">' +
+    'Droogtijden referentie</div>';
+  html += '<table class="spec-table">' +
+    '<tr><th>Product</th>' +
+    '<th>Tussen lagen</th>' +
+    '<th>Voor volgende stap</th></tr>';
+
+  if (!f.ic) {
+    html += '<tr><td>Aquafin-1K</td>' +
+      '<td>4-6 uur</td>' +
+      '<td>24u curing na laatste laag</td></tr>';
+  }
+  if (f.ic) {
+    html += '<tr><td>Aquafin-IC</td>' +
+      '<td>Wet-on-tacky (zelfde dag)</td>' +
+      '<td>3 dagen curing</td></tr>';
+  }
+  if (c.status2k === 'verplicht' ||
+      c.status2k === 'aanbevolen') {
+    html += '<tr><td>Aquafin-2K M+</td>' +
+      '<td>3-6 uur</td>' +
+      '<td>Tussen lagen</td></tr>';
+  }
+  if (code === 'E08') {
+    html += '<tr><td>Aquafin-RB400</td>' +
+      '<td>2-3 uur</td>' +
+      '<td>Snelreactief</td></tr>';
+  }
+  if (f.metselwerk) {
+    html += '<tr><td>Esco-Fluaat</td>' +
+      '<td>6-7 uur</td>' +
+      '<td>24u voor cementering</td></tr>';
+    html += '<tr><td>Aquafin Primer</td>' +
+      '<td>ca. 30 min</td>' +
+      '<td>Matvochtig</td></tr>';
+    html += '<tr><td>Asocret M30</td>' +
+      '<td>ca. 3 uur</td>' +
+      '<td>Overwerkbaar</td></tr>';
+  }
+  html += '<tr><td>Fix 20-T</td>' +
+    '<td>2-3 uur</td>' +
+    '<td>Overwerkbaar</td></tr>';
+  html += '</table>';
+
+  /* Scheuroverbrugging */
+  html += '<div class="spec-subtitle">' +
+    'Scheuroverbrugging</div>';
+  html += '<table class="spec-table">' +
+    '<tr><th>Product</th>' +
+    '<th>Type</th>' +
+    '<th>Waarde</th></tr>' +
+    '<tr><td>Aquafin-1K</td>' +
+    '<td>Geen</td>' +
+    '<td>Rigide coating</td></tr>' +
+    '<tr><td>Aquafin-IC</td>' +
+    '<td>Zelfherstellend kristallijn</td>' +
+    '<td class="highlight">tot 0,4 mm</td></tr>' +
+    '<tr><td>Aquafin-2K M+</td>' +
+    '<td>Statisch (DIN EN 14891)</td>' +
+    '<td class="highlight">&gt; 0,75 mm</td></tr>' +
+    '<tr><td>Aquafin-RB400</td>' +
+    '<td>Dynamisch + statisch</td>' +
+    '<td class="highlight">DIN 18533</td></tr>' +
+    '</table>';
+
+  /* Liftput vergelijking E08 vs E09 */
+  if (f.liftput) {
+    html += '<div class="spec-subtitle">' +
+      'Liftput: E08 vs E09 vergelijking</div>';
+    html += '<table class="spec-table">' +
+      '<tr><th>Criterium</th>' +
+      '<th>E08 (vibraties)</th>' +
+      '<th>E09 (standaard)</th></tr>' +
+      '<tr><td>Systeem</td>' +
+      '<td>1K (3 lagen) + RB400</td>' +
+      '<td>IC (2 lagen)</td></tr>' +
+      '<tr><td>Doorlooptijd</td>' +
+      '<td class="highlight">3 dagen</td>' +
+      '<td>4-5 dagen</td></tr>' +
+      '<tr><td>Scheuroverbrugging</td>' +
+      '<td>Dynamisch + statisch</td>' +
+      '<td>Zelfherstellend 0,4mm</td></tr>' +
+      '<tr><td>Mechanisme</td>' +
+      '<td>Flexibele membraan buigt mee</td>' +
+      '<td>Kristalgroei dicht scheuren</td></tr>' +
+      '<tr><td>Dynamische scheuren</td>' +
+      '<td class="highlight">Ja (bestand)</td>' +
+      '<td>Nee (kristallen breken)</td></tr>' +
+      '<tr><td>Drukweerstand</td>' +
+      '<td>Tot 10m waterkolom</td>' +
+      '<td class="highlight">Tot 140m waterkolom' +
+      '</td></tr>' +
+      '<tr><td>Geschikt bij</td>' +
+      '<td>Tractielift, goederenlift, ' +
+      'hoge frequentie</td>' +
+      '<td>Hydraulische lift, ' +
+      'residentieel, laag gebruik</td></tr>' +
+      '<tr><td>Schomburg aanbeveling</td>' +
+      '<td>Bij vibraties</td>' +
+      '<td class="highlight">Primaire ' +
+      'aanbeveling</td></tr>' +
+      '</table>';
+  }
+
+  /* Uitvoeringsplanning */
+  if (code !== 'E12') {
+    html += '<div class="spec-subtitle">' +
+      'Uitvoeringsplanning ' + c.code + '</div>';
+
+    if (f.ic) {
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 1</span>' +
+        '<span class="planning-desc">' +
+        'Afbraak, ondergrondvoorbereiding, ' +
+        'lekken stoppen, kimvorming</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 2</span>' +
+        '<span class="planning-desc">' +
+        'IC laag 1 + laag 2 ' +
+        '(wet-on-tacky, zelfde dag!)</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 3-4</span>' +
+        '<span class="planning-desc">' +
+        'Curing (nat sprayen, min. 3 dagen)' +
+        '</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 4-5</span>' +
+        '<span class="planning-desc">' +
+        'Afwerking (beperkt)</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Totaal</span>' +
+        '<span class="planning-desc">' +
+        '4-5 dagen</span></div>';
+    } else if (f.w21 && f.beton && !f.garage) {
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 1</span>' +
+        '<span class="planning-desc">' +
+        'Afbraak, ondergrondvoorbereiding, ' +
+        'lekken stoppen, kimvorming</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 2</span>' +
+        '<span class="planning-desc">' +
+        '1K laag 1 (08:00) + laag 2 (12:00) + ' +
+        'laag 3 (16:00)</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 3</span>' +
+        '<span class="planning-desc">' +
+        'Curing + 2K laag 1 + laag 2</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Totaal</span>' +
+        '<span class="planning-desc">' +
+        '3 dagen</span></div>';
+    } else if (f.metselwerk) {
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 1</span>' +
+        '<span class="planning-desc">' +
+        'Afbraak, ondergrondvoorbereiding, ' +
+        'zoutneutralisatie, kimvorming</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 2</span>' +
+        '<span class="planning-desc">' +
+        'Esco-Fluaat + droogtijd 24u' +
+        '</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 3</span>' +
+        '<span class="planning-desc">' +
+        'Primer + cementering Asocret M30' +
+        '</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 4</span>' +
+        '<span class="planning-desc">' +
+        '1K aanbrengen (2' + (f.w21 ? '-3':'') +
+        ' lagen)</span></div>';
+      if (f.w21) {
+        html += '<div class="planning-step">' +
+          '<span class="planning-day">Dag 5</span>' +
+          '<span class="planning-desc">' +
+          'Curing + 2K (2 lagen)</span></div>';
+      }
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Totaal</span>' +
+        '<span class="planning-desc">' +
+        c.doorlooptijd + '</span></div>';
+    } else {
+      /* W1 beton = simpelst */
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 1</span>' +
+        '<span class="planning-desc">' +
+        'Afbraak, ondergrondvoorbereiding, ' +
+        'lekken stoppen, kimvorming</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Dag 2</span>' +
+        '<span class="planning-desc">' +
+        '1K laag 1 + laag 2 ' +
+        '(4-6u tussentijd)</span></div>';
+      html += '<div class="planning-step">' +
+        '<span class="planning-day">Totaal</span>' +
+        '<span class="planning-desc">' +
+        c.doorlooptijd + '</span></div>';
+    }
+  }
+
+  return html;
+}
+
+/* ===== CHECKLIST BUILDER ===== */
+function buildChecklist(code) {
+  var f = FLAGS[code];
+  if (!f) return [];
+  var groups = [];
+
+  /* 1. AFMETINGEN */
+  var afm = [];
+  if (!f.liftput) {
+    afm.push({ type:'input',
+      label:'Vloeroppervlakte', unit:'m\u00B2' });
+    afm.push({ type:'input',
+      label:'Wandoppervlakte', unit:'m\u00B2' });
+  } else {
+    afm.push({ type:'input',
+      label:'Vloeroppervlakte put', unit:'m\u00B2' });
+    afm.push({ type:'input',
+      label:'Wandoppervlakte put', unit:'m\u00B2' });
+    afm.push({ type:'input',
+      label:'Diepte put', unit:'m' });
+  }
+  afm.push({ type:'input',
+    label:'Omtrek kim wand-vloer', unit:"m'" });
+  afm.push({ type:'input',
+    label:'Omtrek kim hoeken/kolommen', unit:"m'" });
+  groups.push({ title:'Afmetingen', items: afm });
+
+  /* 2. ONDERGROND BETON */
+  if (f.beton) {
+    var ob = [];
+    ob.push({ type:'check',
+      label:'Betonkwaliteit',
+      hint:'goed / beschadigd / poreus' });
+    if (!f.liftput) {
+      ob.push({ type:'check',
+        label:'Bestaande coating aanwezig',
+        hint:'ja / nee (type: ...)' });
+      ob.push({ type:'check',
+        label:'Bestaande tegels',
+        hint:'ja / nee' });
+    }
+    groups.push({
+      title:'Ondergrond - Beton', items: ob
+    });
+  }
+
+  /* 3. ONDERGROND METSELWERK */
+  if (f.metselwerk) {
+    var om = [];
+    om.push({ type:'check',
+      label:'Zoutuitbloei',
+      hint:'nee / licht / matig / zwaar' });
+    om.push({ type:'check',
+      label:'Bestaande cementering',
+      hint:'ja / nee' });
+    om.push({ type:'check',
+      label:'Staat cementering',
+      hint:'goed / los / beschadigd' });
+    groups.push({
+      title:'Ondergrond - Metselwerk', items: om
+    });
+  }
+
+  /* 4. VOCHTBEOORDELING */
+  var vo = [];
+  vo.push({ type:'check',
+    label:'Actieve waterintreding',
+    hint:'ja / nee' });
+  vo.push({ type:'check',
+    label:'Locaties waterintreding',
+    hint:'vloer / wanden / kim / doorvoeringen' });
+  vo.push({ type:'input',
+    label:'Aantal lekpunten', unit:'st' });
+  vo.push({ type:'check',
+    label:'Scheurvorming', hint:'ja / nee' });
+  vo.push({ type:'check',
+    label:'Type scheuren',
+    hint:'krimp / constructief / watervoerend' });
+  if (f.w21) {
+    vo.push({ type:'check',
+      label:'Water staat onder druk (spuit/welt op)',
+      hint:'ja / nee' });
+    vo.push({ type:'check',
+      label:'Wanden permanent vochtig',
+      hint:'ja / nee / deels' });
+    vo.push({ type:'check',
+      label:'Pompput loopt vol',
+      hint:'nooit / soms / regelmatig' });
+  }
+  groups.push({
+    title:'Vochtbeoordeling', items: vo
+  });
+
+  /* 5. AFBRAAK (niet liftput) */
+  if (!f.liftput) {
+    var af = [];
+    af.push({ type:'check',
+      label:'Tegels te verwijderen',
+      hint:'ja / nee' });
+    af.push({ type:'check',
+      label:'Tussenwanden te verwijderen',
+      hint:'ja / nee (type: ...)' });
+    af.push({ type:'check',
+      label:'Inbouwkasten te verwijderen',
+      hint:'ja / nee' });
+    af.push({ type:'check',
+      label:'Bestaande coating te verwijderen',
+      hint:'ja / nee (type: ...)' });
+    if (f.metselwerk) {
+      af.push({ type:'check',
+        label:'Bestaande cementering te verwijderen',
+        hint:'ja / nee' });
+    }
+    groups.push({ title:'Afbraakwerk', items: af });
+  }
+
+  /* 6. INSTALLATIES */
+  var inst = [];
+  inst.push({ type:'input',
+    label:'Doorvoeringen', unit:'st' });
+  inst.push({ type:'input',
+    label:'Dilatatievoegen', unit:"m'" });
+  if (!f.liftput) {
+    inst.push({ type:'check',
+      label:'Pompput aanwezig',
+      hint:'ja / nee' });
+    inst.push({ type:'check',
+      label:'Pompput status',
+      hint:'goed / te behandelen / opvullen' });
+  }
+  groups.push({ title:'Installaties', items: inst });
+
+  /* 7. LIFTPUT SPECIFIEK */
+  if (f.liftput) {
+    var lp = [];
+    lp.push({ type:'check',
+      label:'Pompput status (BEHOUDEN = verplicht)',
+      hint:'goed / te behandelen' });
+    lp.push({ type:'check',
+      label:'Type liftinstallatie',
+      hint:'tractie / hydraulisch / goederenlift' });
+    lp.push({ type:'check',
+      label:'Vibraties waargenomen',
+      hint:'ja / nee / onbekend' });
+    lp.push({ type:'check',
+      label:'Gebruiksfrequentie lift',
+      hint:'laag / gemiddeld / hoog / continu' });
+    lp.push({ type:'check',
+      label:'Ventilatie liftschacht',
+      hint:'goed / slecht / afwezig' });
+    lp.push({ type:'check',
+      label:'Toegang tot put',
+      hint:'ladder / trap / via liftkooi' });
+    groups.push({
+      title:'Liftput - specifiek', items: lp
+    });
+  }
+
+  /* 8. GARAGE SPECIFIEK */
+  if (f.garage) {
+    var ga = [];
+    ga.push({ type:'check',
+      label:'Vloerbelasting',
+      hint:'personenwagens / bestelwagens / zwaar' });
+    ga.push({ type:'check',
+      label:'Bestaande vloercoating',
+      hint:'ja / nee (type: ...)' });
+    ga.push({ type:'check',
+      label:'Hellinggraad oprit',
+      hint:'vlak / licht / steil' });
+    ga.push({ type:'check',
+      label:'Antislip vereist',
+      hint:'ja / nee' });
+    groups.push({
+      title:'Garage - specifiek', items: ga
+    });
+  }
+
+  /* 9. TOEGANKELIJKHEID */
+  var to = [];
+  to.push({ type:'check',
+    label:'Toegang materieel',
+    hint:'goed / beperkt' });
+  to.push({ type:'check',
+    label:'Verluchting',
+    hint:'goed / slecht' });
+  to.push({ type:'check',
+    label:'Elektriciteit aanwezig',
+    hint:'ja / nee' });
+  to.push({ type:'check',
+    label:'Water aanwezig',
+    hint:'ja / nee' });
+  groups.push({
+    title:'Toegankelijkheid', items: to
+  });
+
+  return groups;
+}
+
+/* ===== CHECKLIST STATE ===== */
+var clState = {};
+
+function getClId(g, i) { return 'cl_' + g + '_' + i; }
+
+/* ===== RENDER SECTION: CHECKLIST ===== */
+function renderChecklistSection(code) {
+  var groups = buildChecklist(code);
+  if (groups.length === 0) return '';
+
+  var total = 0;
+  for (var g = 0; g < groups.length; g++) {
+    total += groups[g].items.length;
+  }
+
+  if (!clState[code]) {
+    clState[code] = {
+      checks: {}, inputs: {}, notes: ''
+    };
+  }
+  var cs = clState[code];
+
+  var checked = 0;
+  for (var k in cs.checks) {
+    if (cs.checks[k]) checked++;
+  }
+  var pct = total > 0
+    ? Math.round(checked / total * 100) : 0;
+
+  /* Section wrapper */
+  var html = '<div class="aqp-section" ' +
+    'id="sec-checklist">';
+
+  /* Header - Calculator style */
+  html += '<button type="button" class="section-header' +
+    (sectionState.checklist ? ' expanded' : '') +
+    '" onclick="toggleSection(\'checklist\')">' +
+    '<span class="section-toggle"></span>' +
+    '<span class="section-label">' +
+    'Checklist Plaatsbezoek</span>' +
+    '<div class="cl-progress-wrap">' +
+    '<div class="cl-progress-bar">' +
+    '<div class="cl-progress-fill" ' +
+    'style="width:' + pct + '%"></div></div>' +
+    '<span class="cl-progress-text">' +
+    checked + '/' + total + '</span></div>' +
+    '</button>';
+
+  /* Content */
+  html += '<div class="section-content' +
+    (sectionState.checklist ? ' show' : '') +
+    '" id="content-checklist">';
+
+  var idx = 0;
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    var gChecked = 0;
+    var gTotal = grp.items.length;
+    for (var i = 0; i < gTotal; i++) {
+      var gid = getClId(g, i);
+      if (cs.checks[gid]) gChecked++;
+    }
+
+    html += '<div class="cl-group">';
+    html += '<div class="cl-group-title">' +
+      grp.title +
+      '<span class="cl-group-progress">' +
+      gChecked + '/' + gTotal + '</span></div>';
+
+    for (var i = 0; i < grp.items.length; i++) {
+      var it = grp.items[i];
+      var id = getClId(g, i);
+      var isDone = cs.checks[id] || false;
+      var val = cs.inputs[id] || '';
+
+      html += '<div class="cl-item' +
+        (isDone ? ' cl-done' : '') +
+        '" id="row_' + id + '">';
+
+      html += '<input type="checkbox" ' +
+        'class="cl-check"' +
+        (isDone ? ' checked' : '') +
+        " onchange=\"clCheck('" + code +
+        "','" + id + "',this.checked)\">";
+
+      html += '<span class="cl-label">' +
+        it.label;
+      if (it.hint) {
+        html += ' <span class="cl-label-hint">(' +
+          it.hint + ')</span>';
+      }
+      html += '</span>';
+
+      if (it.type === 'input') {
+        html += '<input type="text" class="cl-input' +
+          (val ? ' cl-filled' : '') + '"' +
+          ' value="' + escHtml(val) + '"' +
+          ' placeholder="..."' +
+          " onchange=\"clInput('" + code +
+          "','" + id + "',this.value)\"" +
+          " oninput=\"this.classList.toggle(" +
+          "'cl-filled',this.value.length>0)\">";
+        html += '<span class="cl-unit">' +
+          it.unit + '</span>';
+      }
+      html += '</div>';
+      idx++;
+    }
+    html += '</div>';
+  }
+
+  if (checked === total && total > 0) {
+    html += '<div class="cl-complete">' +
+      '&#9989; Checklist compleet</div>';
+  }
+
+  html += '<div class="cl-notes-wrap">';
+  html += '<div class="cl-notes-label">' +
+    'Opmerkingen plaatsbezoek</div>';
+  html += '<textarea class="cl-notes" ' +
+    'placeholder="Bijkomende opmerkingen, ' +
+    'foto-referenties, bijzonderheden..."' +
+    " onchange=\"clNotes('" + code +
+    "',this.value)\">" +
+    escHtml(cs.notes) + '</textarea>';
+  html += '</div>';
+
+  html += '</div></div>';
+  return html;
+}
+
+/* ===== RENDER SECTION: OPMERKINGEN ===== */
+function renderOpmerkingenSection(code) {
+  var c = CONFIGS[code];
+  if (!c || !c.notes) return '';
+
+  var html = '<div class="aqp-section" ' +
+    'id="sec-opmerkingen">';
+  html += '<button type="button" ' +
+    'class="section-header' +
+    (sectionState.opmerkingen ? ' expanded' : '') +
+    '" onclick="toggleSection(\'opmerkingen\')">' +
+    '<span class="section-toggle"></span>' +
+    '<span class="section-label">' +
+    'Opmerkingen</span></button>';
+
+  html += '<div class="section-content' +
+    (sectionState.opmerkingen ? ' show' : '') +
+    '" id="content-opmerkingen">';
+
+  html += '<ul class="info-list">';
+  var noteLines = c.notes.split('. ');
+  for (var n = 0; n < noteLines.length; n++) {
+    var line = noteLines[n].trim();
+    if (line.length > 0) {
+      if (!line.endsWith('.')) line += '.';
+      html += '<li>' + line + '</li>';
+    }
+  }
+  html += '</ul>';
+
+  /* 2K reden */
+  html += '<div style="margin-top:12px;' +
+    'padding:10px 14px;' +
+    'background:var(--input-bg);' +
+    'border-radius:var(--radius-sm);' +
+    'font-size:13px;line-height:1.5">';
+  html += '<strong style="color:var(--primary)">' +
+    '2K Status:</strong> ' +
+    c.status2kLabel + ' &mdash; ' +
+    c.status2kReden;
+  html += '</div>';
+
+  html += '</div></div>';
+  return html;
+}
+
+/* ===== RENDER SECTION: BELANGRIJK ===== */
+function renderBelangrijkSection(code) {
+  var groups = getBelangrijk(code);
+  if (groups.length === 0) return '';
+
+  var totalItems = 0;
+  for (var g = 0; g < groups.length; g++) {
+    totalItems += groups[g].items.length;
+  }
+
+  var html = '<div class="aqp-section" ' +
+    'id="sec-belangrijk">';
+  html += '<button type="button" ' +
+    'class="section-header' +
+    (sectionState.belangrijk ? ' expanded' : '') +
+    '" onclick="toggleSection(\'belangrijk\')">' +
+    '<span class="section-toggle"></span>' +
+    '<span class="section-label" ' +
+    'style="color:var(--danger)">' +
+    'Belangrijk</span>' +
+    '<span class="section-meta">' +
+    totalItems + ' aandachtspunten</span>' +
+    '</button>';
+
+  html += '<div class="section-content' +
+    (sectionState.belangrijk ? ' show' : '') +
+    '" id="content-belangrijk">';
+
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    html += '<div class="belangrijk-group">';
+    html += '<div class="belangrijk-group-title">' +
+      grp.title + '</div>';
+    html += '<ul class="info-list belangrijk-list">';
+    for (var i = 0; i < grp.items.length; i++) {
+      html += '<li>' + grp.items[i] + '</li>';
+    }
+    html += '</ul></div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+/* ===== RENDER SECTION: ONDERBOUWING ===== */
+function renderOnderbouwingSection(code) {
+  var content = getOnderbouwing(code);
+  if (!content) return '';
+
+  var html = '<div class="aqp-section" ' +
+    'id="sec-onderbouwing">';
+  html += '<button type="button" ' +
+    'class="section-header' +
+    (sectionState.onderbouwing ? ' expanded' : '') +
+    '" onclick="toggleSection(\'onderbouwing\')">' +
+    '<span class="section-toggle"></span>' +
+    '<span class="section-label">' +
+    'Onderbouwing</span>' +
+    '<span class="section-meta">' +
+    'Technische specificaties</span>' +
+    '</button>';
+
+  html += '<div class="section-content' +
+    (sectionState.onderbouwing ? ' show' : '') +
+    '" id="content-onderbouwing">';
+  html += content;
+  html += '</div></div>';
+  return html;
+}
+
+/* ===== SECTION TOGGLE STATE ===== */
+var sectionState = {
+  checklist: false,
+  opmerkingen: false,
+  belangrijk: false,
+  onderbouwing: false
+};
+
+function toggleSection(name) {
+  sectionState[name] = !sectionState[name];
+  var hdr = document.querySelector(
+    '#sec-' + name + ' .section-header');
+  var cnt = document.getElementById(
+    'content-' + name);
+  if (hdr) {
+    if (sectionState[name]) {
+      hdr.classList.add('expanded');
+    } else {
+      hdr.classList.remove('expanded');
+    }
+  }
+  if (cnt) {
+    if (sectionState[name]) {
+      cnt.classList.add('show');
+    } else {
+      cnt.classList.remove('show');
+    }
+  }
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+/* ===== CHECKLIST ACTIONS ===== */
+function clCheck(code, id, val) {
+  if (!clState[code]) {
+    clState[code] = {
+      checks:{}, inputs:{}, notes:''
+    };
+  }
+  clState[code].checks[id] = val;
+
+  var row = document.getElementById('row_' + id);
+  if (row) {
+    if (val) row.classList.add('cl-done');
+    else row.classList.remove('cl-done');
+  }
+  updateClProgress(code);
+}
+
+function clInput(code, id, val) {
+  if (!clState[code]) {
+    clState[code] = {
+      checks:{}, inputs:{}, notes:''
+    };
+  }
+  clState[code].inputs[id] = val;
+}
+
+function clNotes(code, val) {
+  if (!clState[code]) {
+    clState[code] = {
+      checks:{}, inputs:{}, notes:''
+    };
+  }
+  clState[code].notes = val;
+}
+
+function updateClProgress(code) {
+  var cs = clState[code];
+  if (!cs) return;
+
+  var checks = document.querySelectorAll(
+    '#sec-checklist .cl-check');
+  var total = checks.length;
+  var checked = 0;
+  for (var k in cs.checks) {
+    if (cs.checks[k]) checked++;
+  }
+  var pct = total > 0
+    ? Math.round(checked / total * 100) : 0;
+
+  var fill = document.querySelector(
+    '.cl-progress-fill');
+  if (fill) fill.style.width = pct + '%';
+
+  var txt = document.querySelector(
+    '.cl-progress-text');
+  if (txt) txt.textContent = checked + '/' + total;
+
+  var titles = document.querySelectorAll(
+    '.cl-group-progress');
+  var groups = document.querySelectorAll('.cl-group');
+  for (var g = 0; g < groups.length; g++) {
+    var items = groups[g].querySelectorAll(
+      '.cl-check');
+    var gc = 0;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].checked) gc++;
+    }
+    if (titles[g]) {
+      titles[g].textContent =
+        gc + '/' + items.length;
+    }
+  }
+}
+
+/* ===== PDF EXPORT ===== */
+function exportPDF() {
+  var sub = document.getElementById('printSub');
+  if (sub && state.result) {
+    var c = CONFIGS[state.result];
+    var d = new Date();
+    var dd = String(d.getDate()).padStart(2,'0');
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var yy = d.getFullYear();
+    sub.textContent = (c ? c.code + ' - ' +
+      c.name + ' | ' : '') +
+      'Plaatsbezoek ' + dd + '/' + mm + '/' + yy;
+  }
+
+  /* Force all sections open for print */
+  var sections = document.querySelectorAll(
+    '.section-content');
+  var states = [];
+  for (var i = 0; i < sections.length; i++) {
+    states.push(
+      sections[i].classList.contains('show'));
+    sections[i].classList.add('show');
+  }
+  var headers = document.querySelectorAll(
+    '.section-header');
+  var hStates = [];
+  for (var i = 0; i < headers.length; i++) {
+    hStates.push(
+      headers[i].classList.contains('expanded'));
+    headers[i].classList.add('expanded');
+  }
+
+  window.print();
+
+  /* Restore states */
+  for (var i = 0; i < sections.length; i++) {
+    if (!states[i]) {
+      sections[i].classList.remove('show');
+    }
+  }
+  for (var i = 0; i < headers.length; i++) {
+    if (!hStates[i]) {
+      headers[i].classList.remove('expanded');
+    }
+  }
+}
+
+/* ===== APP STATE ===== */
+var state = {
+  step: 0,
+  waterklasse: null,
+  ruimte: null,
+  ondergrond: null,
+  systeem: null,
+  result: null,
+  path: []
+};
+
+var app = document.getElementById('app');
+
+/* ===== RENDER ENGINE ===== */
+function render() {
+  var html = '';
+
+  /* Path breadcrumbs */
+  if (state.path.length > 0) {
+    html += '<div class="path-wrap">';
+    for (var i = 0; i < state.path.length; i++) {
+      if (i > 0)
+        html +=
+          '<span class="path-sep">&#9656;</span>';
+      html += '<span class="path-chip" ' +
+        'onclick="goBack(' + i + ')">' +
+        state.path[i].label + '</span>';
+    }
+    html += '</div>';
+  }
+
+  /* Progress bar */
+  var totalSteps = getTotalSteps();
+  html += '<div class="progress-wrap">';
+  html += '<div class="progress-steps">';
+  for (var s = 0; s < totalSteps; s++) {
+    var cls = s < state.step ? 'done' :
+      (s === state.step ? 'active' : '');
+    html += '<div class="progress-step ' +
+      cls + '"></div>';
+  }
+  html += '</div>';
+  html += '<div class="progress-label">Stap ' +
+    (state.step + 1) + ' van ' +
+    totalSteps + '</div>';
+  html += '</div>';
+
+  /* Current step */
+  switch (state.step) {
+    case 0: html += renderStep0(); break;
+    case 1: html += renderStep1(); break;
+    case 2: html += renderStep2(); break;
+    case 3: html += renderStep3(); break;
+    case 99: html += renderResult(); break;
+  }
+
+  app.innerHTML = html;
+}
+
+function getTotalSteps() {
+  if (state.result) return state.step;
+  if (state.ruimte === 'liftput') return 2;
+  if (state.ruimte === 'garage') return 2;
+  if (state.waterklasse === 'W2.2') return 2;
+  if (state.waterklasse === 'W2.1' &&
+      state.ondergrond === 'beton') return 4;
+  return 3;
+}
+
+/* ===== STEP 0: RUIMTETYPE ===== */
+function renderStep0() {
+  return '<div class="step-card">' +
+    '<div class="step-number">Stap 1</div>' +
+    '<div class="step-question">' +
+    'Type ruimte?</div>' +
+    '<div class="step-hint">' +
+    'Wat voor ruimte moet gedicht worden? ' +
+    'Dit bepaalt de specifieke vereisten en ' +
+    'beschikbare systemen.</div>' +
+    '<div class="options">' +
+    optBtn('setRuimte("kelder")',
+      'Kelder',
+      'Woonkelder, opslagruimte, technische ' +
+      'ruimte. Meest voorkomende toepassing.') +
+    optBtn('setRuimte("liftput")',
+      'Liftput',
+      'Altijd W2.1 + 100% beton. ' +
+      'Pompput verplicht behouden.') +
+    optBtn('setRuimte("garage")',
+      'Garage',
+      'Slijtvaste/antislip coating verplicht. ' +
+      'Mix ondergrond (betonvloer + wanden).') +
+    '</div></div>';
+}
+
+/* ===== STEP 1 ===== */
+function renderStep1() {
+  if (state.ruimte === 'liftput') {
+    return '<div class="step-card">' +
+      '<div class="step-number">Stap 2</div>' +
+      '<div class="step-question">' +
+      'Zijn er vibraties (actieve lift)?</div>' +
+      '<div class="step-hint">' +
+      'Liftput = altijd W2.1 + 100% beton. ' +
+      'Het type lift bepaalt het systeem.</div>' +
+      '<div style="margin:12px 0 16px;padding:12px 16px;' +
+      'background:var(--input-bg);border-radius:8px;' +
+      'border-left:3px solid var(--primary);' +
+      'font-size:clamp(12px,1.6vw,14px);' +
+      'line-height:1.6;color:var(--text-muted)">' +
+      '<div style="font-weight:600;color:var(--text);' +
+      'margin-bottom:6px">Waarom is dit belangrijk?</div>' +
+      'IC-kristallen groeien scheuren dicht, maar ' +
+      'hebben tijd nodig om te harden. Bij herhaalde ' +
+      'trillingen worden kristallen telkens verbroken ' +
+      'voordat ze volgroeid zijn. RB400 is een ' +
+      'flexibele membraan die meebuigt met dynamische ' +
+      'scheurbewegingen zonder te falen.' +
+      '<div style="margin-top:10px;font-weight:600;' +
+      'color:var(--text)">Indicatoren voor ' +
+      'vibraties:</div>' +
+      '<div style="margin-top:4px">' +
+      '&#8226; Tractielift (kabel/contragewicht)' +
+      '</div>' +
+      '<div>&#8226; Zwaarbelaste goederenlift</div>' +
+      '<div>&#8226; Hoge gebouwen met frequent ' +
+      'gebruik</div>' +
+      '<div>&#8226; Oudere installaties met ' +
+      'merkbare trillingen</div>' +
+      '<div style="margin-top:10px;font-weight:600;' +
+      'color:var(--text)">Indicatoren standaard ' +
+      '(geen vibraties):</div>' +
+      '<div style="margin-top:4px">' +
+      '&#8226; Hydraulische lift (residentieel)' +
+      '</div>' +
+      '<div>&#8226; Klein appartementsgebouw ' +
+      '(3-4 verdiepingen)</div>' +
+      '<div>&#8226; Lage gebruiksfrequentie</div>' +
+      '</div>' +
+      '<div class="options">' +
+      optBtn('setVibratie(true)',
+        'Ja - actieve lift met vibraties',
+        'E08: 1K (3 lagen) + RB400 - dynamische ' +
+        'scheuroverbrugging (3 dagen)') +
+      optBtn('setVibratie(false)',
+        'Nee - standaard liftput',
+        'E09: IC kristallijn - zelfherstellend ' +
+        'tot 0,4mm (4-5 dagen)') +
+      '</div></div>';
+  }
+
+  var opts = '';
+  opts += optBtn('setWater("W1")',
+    'W1 - Bodemvocht',
+    'GHG &gt;50cm onder vloer. Geen drukkend water. ' +
+    '2 lagen 1K, 2K optioneel.');
+  opts += optBtn('setWater("W2.1")',
+    'W2.1 - Drukkend water (&le;3m)',
+    'GHG &lt;50cm onder vloer of hoger. ' +
+    '3 lagen 1K, 2K verplicht.');
+
+  if (state.ruimte === 'kelder') {
+    opts += optBtn('setWater("W2.2")',
+      'W2.2 - Hoge waterdruk (&gt;3m)',
+      'GHG &gt;3m boven vloerniveau. ' +
+      'Speciale constructie, ' +
+      'maatwerkofferte vereist.');
+  }
+
+  return '<div class="step-card">' +
+    '<div class="step-number">Stap 2</div>' +
+    '<div class="step-question">' +
+    'Waterbelastingsklasse?</div>' +
+    '<div class="step-hint">' +
+    'Bepaald via AquaCheck rapport of visuele ' +
+    'beoordeling ter plaatse. Bij twijfel ' +
+    'tussen W1 en W2.1: ALTIJD W2.1 adviseren.' +
+    '</div>' +
+    '<div class="options">' + opts + '</div>' +
+    '<div class="warn-box warn-box-info">' +
+    '<span class="warn-icon">&#128161;</span>' +
+    '<span>Geen AquaCheck beschikbaar? ' +
+    'Actief water zichtbaar = W2.1, ' +
+    'alleen vochtige wanden = W1, ' +
+    'water spuit/welt op onder druk = W2.1 ' +
+    'of hoger.</span></div>' +
+    '</div>';
+}
+
+/* ===== STEP 2: ONDERGROND ===== */
+function renderStep2() {
+  var opts = '';
+  opts += optBtn('setOndergrond("beton")',
+    '100% Beton',
+    'Vloer EN wanden zijn beton. ' +
+    'Geen cementering nodig.');
+  opts += optBtn('setOndergrond("metselwerk")',
+    '100% Metselwerk',
+    'Vloer EN wanden zijn metselwerk. ' +
+    'Cementering + primer verplicht.');
+  opts += optBtn('setOndergrond("mix")',
+    'Mix (betonvloer + metselwerk wanden)',
+    'Meest voorkomend bij renovatie. ' +
+    'Beide voorbereidingen nodig.');
+
+  var hint = '';
+  if (state.waterklasse === 'W2.1') {
+    hint = '<div class="warn-box warn-box-caution">' +
+      '<span class="warn-icon">&#9888;</span>' +
+      '<span>Let op: AQUAFIN-IC is ALLEEN mogelijk ' +
+      'op 100% beton. Bij metselwerk of mix ' +
+      'is uitsluitend het 1K+2K systeem mogelijk.' +
+      '</span></div>';
+  }
+
+  return '<div class="step-card">' +
+    '<div class="step-number">Stap 3</div>' +
+    '<div class="step-question">' +
+    'Welk type ondergrond?</div>' +
+    '<div class="step-hint">' +
+    'Beoordeel WANDEN en VLOER apart. ' +
+    'Gecementeerd metselwerk telt als ' +
+    'metselwerk (bestaande cementering ' +
+    'wordt verwijderd).</div>' +
+    '<div class="options">' + opts + '</div>' +
+    hint + '</div>';
+}
+
+/* ===== STEP 3: IC vs 1K ===== */
+function renderStep3() {
+  return '<div class="step-card">' +
+    '<div class="step-number">Stap 4</div>' +
+    '<div class="step-question">' +
+    'Welk dichtingssysteem?</div>' +
+    '<div class="step-hint">' +
+    'Beide systemen zijn geschikt voor W2.1 ' +
+    'op beton. De keuze hangt af van ' +
+    'prioriteit: snelheid of zelfherstellend ' +
+    'vermogen.</div>' +
+    '<div class="options">' +
+    optBtn('setSysteem("1K")',
+      'AQUAFIN-1K + 2K (sneller)',
+      '3 lagen 1K + 2 lagen 2K. Doorlooptijd: ' +
+      '3 dagen. Scheuroverbrugging tot 0,75mm.') +
+    optBtn('setSysteem("IC")',
+      'AQUAFIN-IC kristallijn (premium)',
+      '2 lagen IC. Doorlooptijd: 4-5 dagen ' +
+      '(3d curing). Zelfherstellend tot 0,4mm. ' +
+      'Drukweerstand tot 140m waterkolom.') +
+    '</div>' +
+    '<div class="warn-box warn-box-info">' +
+    '<span class="warn-icon">&#128161;</span>' +
+    '<span><strong>1K+2K is sneller</strong> ' +
+    '(3 vs 4-5 dagen). ' +
+    '<strong>IC is zelfherstellend</strong> ' +
+    'en biedt hogere drukweerstand. ' +
+    'Bij twijfel: 1K+2K voor standaard, ' +
+    'IC bij maximale zekerheid.</span>' +
+    '</div></div>';
+}
+
+/* ===== RESULT ===== */
+function renderResult() {
+  var c = CONFIGS[state.result];
+  if (!c) return '<p>Configuratie niet gevonden.</p>';
+
+  var riskClass = c.risk === 'low' ? 'risk-low' :
+    (c.risk === 'extreme'
+      ? 'risk-extreme' : 'risk-high');
+
+  var s2kClass = 'status-2k-' + c.status2k;
+
+  var html = '<div class="result-card">' +
+    '<div class="result-header">' +
+    '<div class="result-code">' + c.code + '</div>' +
+    '<div class="result-name">' +
+    c.name + '</div>' +
+    '</div>' +
+    '<div class="result-body">' +
+
+    /* Title */
+    '<div style="font-size:16px;font-weight:700;' +
+    'margin-bottom:16px">' + c.title + '</div>' +
+
+    /* System */
+    '<div class="result-system">' +
+    '<div class="result-system-label">Systeem</div>' +
+    '<div class="result-system-value">' +
+    c.systeem + '</div></div>' +
+
+    /* 2K Status badge */
+    '<div class="result-2k-wrap">' +
+    '<span class="result-2k-label">' +
+    'Flexibele laag (2K):</span>' +
+    '<span class="status-2k ' + s2kClass + '">' +
+    c.status2kLabel + '</span></div>' +
+
+    /* Grid */
+    '<div class="result-grid">' +
+    resultItem('Waterklasse', c.waterklasse) +
+    resultItem('Ondergrond', c.ondergrond) +
+    resultItem('Doorlooptijd', c.doorlooptijd) +
+    resultItem('Lijnen in offerte',
+      c.lijnen === 'PM'
+        ? 'Maatwerk' : c.lijnen + ' / 70') +
+    resultItem('Risiconiveau',
+      '<span class="risk-badge ' + riskClass +
+      '">' + c.riskLabel + '</span>') +
+    '</div>' +
+
+    /* Teamleader */
+    '<div class="tl-badge">' +
+    '<div class="tl-badge-icon">&#128196;</div>' +
+    '<div class="tl-badge-text">' +
+    'Open in Teamleader:<br>' +
+    '<span class="tl-badge-name">' +
+    c.tlName + '</span></div></div>' +
+
+    '</div></div>';
+
+  /* 4 SECTIONS */
+  html += renderChecklistSection(c.code);
+  html += renderOpmerkingenSection(c.code);
+  html += renderBelangrijkSection(c.code);
+  html += renderOnderbouwingSection(c.code);
+
+  /* PDF + Actions */
+  html += '<div style="margin-top:16px;' +
+    'text-align:center">' +
+    '<button class="btn-pdf" ' +
+    'onclick="exportPDF()">' +
+    '&#128196; Opslaan als PDF</button></div>';
+
+  html += '<div class="actions">' +
+    '<button class="btn btn-primary" ' +
+    'onclick="resetAll()">' +
+    'Nieuwe Configuratie</button></div>';
+
+  return html;
+}
+
+/* ===== HELPERS ===== */
+function optBtn(action, title, desc) {
+  return "<button class='opt-btn' " +
+    "onclick='" + action + "'>" +
+    '<div class="opt-content">' +
+    '<div class="opt-title">' + title + '</div>' +
+    '<div class="opt-desc">' + desc + '</div>' +
+    '</div></button>';
+}
+
+function resultItem(label, value) {
+  return '<div class="result-item">' +
+    '<div class="result-item-label">' +
+    label + '</div>' +
+    '<div class="result-item-value">' +
+    value + '</div></div>';
+}
+
+/* ===== NAVIGATION ACTIONS ===== */
+function setRuimte(r) {
+  state.ruimte = r;
+  var labels = {
+    kelder:'Kelder', liftput:'Liftput',
+    garage:'Garage'
+  };
+  state.path.push({ label: labels[r], step: 0 });
+  state.step = 1;
+  render();
+}
+
+function setWater(w) {
+  state.waterklasse = w;
+  state.path.push({ label: w, step: 1 });
+
+  if (w === 'W2.2') {
+    state.result = 'E12';
+    state.step = 99;
+  } else if (state.ruimte === 'garage') {
+    state.result = w === 'W1' ? 'E10' : 'E11';
+    state.step = 99;
+  } else {
+    state.step = 2;
+  }
+  render();
+}
+
+function setVibratie(v) {
+  state.path.push({
+    label: v ? 'Vibraties' : 'Geen vibraties',
+    step: 1
+  });
+  state.result = v ? 'E08' : 'E09';
+  state.step = 99;
+  render();
+}
+
+function setOndergrond(o) {
+  state.ondergrond = o;
+  var labels = {
+    beton:'Beton', metselwerk:'Metselwerk',
+    mix:'Mix'
+  };
+  state.path.push({ label: labels[o], step: 2 });
+
+  if (state.waterklasse === 'W1') {
+    if (o === 'beton') state.result = 'E01';
+    else if (o === 'metselwerk')
+      state.result = 'E02';
+    else state.result = 'E03';
+    state.step = 99;
+  } else if (state.waterklasse === 'W2.1') {
+    if (o === 'beton') {
+      state.step = 3;
+    } else if (o === 'metselwerk') {
+      state.result = 'E06';
+      state.step = 99;
+    } else {
+      state.result = 'E07';
+      state.step = 99;
+    }
+  }
+  render();
+}
+
+function setSysteem(s) {
+  state.systeem = s;
+  state.path.push({ label: s, step: 3 });
+  state.result = s === '1K' ? 'E04' : 'E05';
+  state.step = 99;
+  render();
+}
+
+function goBack(pathIndex) {
+  var target = state.path[pathIndex];
+  state.step = target.step;
+  state.path = state.path.slice(0, pathIndex);
+  state.result = null;
+
+  if (target.step <= 0) {
+    state.ruimte = null;
+    state.waterklasse = null;
+    state.ondergrond = null;
+    state.systeem = null;
+  }
+  if (target.step <= 1) {
+    state.waterklasse = null;
+    state.ondergrond = null;
+    state.systeem = null;
+  }
+  if (target.step <= 2) {
+    state.ondergrond = null;
+    state.systeem = null;
+  }
+  if (target.step <= 3) {
+    state.systeem = null;
+  }
+  render();
+}
+
+function resetAll() {
+  state = {
+    step: 0, waterklasse: null, ruimte: null,
+    ondergrond: null, systeem: null,
+    result: null, path: []
+  };
+  /* Reset section states */
+  sectionState = {
+    checklist: false, opmerkingen: false,
+    belangrijk: false, onderbouwing: false
+  };
+  render();
+}
+
+/* ===== INIT ===== */
+render();
+</script>
+</body>
+</html>
